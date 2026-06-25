@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retro Maze Game</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1e1e24;
+            color: #fff;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        h1 {
+            margin-bottom: 10px;
+            color: greenyellow;
+        }
+
+        #game-container {
+            position: relative;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        canvas {
+            background-color: #111;
+            display: block;
+        }
+
+        /* Controls Section */
+        .controls-container {
+            margin-top: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            width: 60px;
+            height: 60px;
+            font-size: 20px;
+            font-weight: bold;
+            background-color: #333;
+            color: #fff;
+            border: 2px solid #555;
+            border-radius: 50%;
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            transition: all 0.1s ease;
+        }
+
+        .btn:active {
+            transform: scale(0.92);
+            background-color: #4caf50;
+            border-color: #81c784;
+        }
+
+        /* Hide the middle spacer on the sides row */
+        .spacer {
+            width: 60px;
+            height: 60px;
+            visibility: hidden;
+        }
+
+        #victory-msg {
+            margin-top: 15px;
+            font-size: 30px;
+            font-weight: bold;
+            color: cyan;
+            height: 30px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Maze Escape</h1>
+    
+    <div id="game-container">
+        <canvas id="mazeCanvas" width="400" height="400"></canvas>
+    </div>
+
+    <div id="victory-msg"></div>
+
+    <div class="controls-container">
+        <div class="row">
+            <button class="btn" id="btn-up">▲</button>
+        </div>
+        <div class="row">
+            <button class="btn" id="btn-left">◀</button>
+            <div class="spacer"></div>
+            <button class="btn" id="btn-right">▶</button>
+        </div>
+        <div class="row">
+            <button class="btn" id="btn-down">▼</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mazeCanvas');
+        const ctx = canvas.getContext('2d');
+        const victoryMsg = document.getElementById('victory-msg');
+
+        // Maze Configuration
+        const cols = 15;
+        const rows = 15;
+        const size = canvas.width / cols;
+        let grid = [];
+        let current;
+        let stack = [];
+
+        // Player & Goal setup
+        let player = { x: 0, y: 0 };
+        const goal = { x: cols - 1, y: rows - 1 };
+        let gameOver = false;
+
+        // Cell Constructor
+        function Cell(i, j) {
+            this.i = i;
+            this.j = j;
+            // Top, Right, Bottom, Left walls
+            this.walls = [true, true, true, true];
+            this.visited = false;
+
+            this.checkNeighbors = function() {
+                let neighbors = [];
+
+                let top    = grid[index(i, j - 1)];
+                let right  = grid[index(i + 1, j)];
+                let bottom = grid[index(i, j + 1)];
+                let left   = grid[index(i - 1, j)];
+
+                if (top && !top.visited) neighbors.push(top);
+                if (right && !right.visited) neighbors.push(right);
+                if (bottom && !bottom.visited) neighbors.push(bottom);
+                if (left && !left.visited) neighbors.push(left);
+
+                if (neighbors.length > 0) {
+                    let r = Math.floor(Math.random() * neighbors.length);
+                    return neighbors[r];
+                } else {
+                    return undefined;
+                }
+            };
+
+            this.show = function() {
+                let x = this.i * size;
+                let y = this.j * size;
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = 2;
+
+                if (this.walls[0]) ctx.strokeRect(x, y, size, 0); // Top
+                if (this.walls[1]) ctx.strokeRect(x + size, y, 0, size); // Right
+                if (this.walls[2]) ctx.strokeRect(x, y + size, size, 0); // Bottom
+                if (this.walls[3]) ctx.strokeRect(x, y, 0, size); // Left
+            };
+        }
+
+        function index(i, j) {
+            if (i < 0 || j < 0 || i > cols - 1 || j > rows - 1) return -1;
+            return i + j * cols;
+        }
+
+        // Generate Maze using DFS algorithm
+        function setupMaze() {
+            grid = [];
+            for (let j = 0; j < rows; j++) {
+                for (let i = 0; i < cols; i++) {
+                    let cell = new Cell(i, j);
+                    grid.push(cell);
+                }
+            }
+
+            current = grid[0];
+            current.visited = true;
+
+            // Generate full maze loop
+            while (true) {
+                let next = current.checkNeighbors();
+                if (next) {
+                    next.visited = true;
+                    stack.push(current);
+                    removeWalls(current, next);
+                    current = next;
+                } else if (stack.length > 0) {
+                    current = stack.pop();
+                } else {
+                    break; // Maze generation complete
+                }
+            }
+        }
+
+        function removeWalls(a, b) {
+            let x = a.i - b.i;
+            if (x === 1) {
+                a.walls[3] = false;
+                b.walls[1] = false;
+            } else if (x === -1) {
+                a.walls[1] = false;
+                b.walls[3] = false;
+            }
+            let y = a.j - b.j;
+            if (y === 1) {
+                a.walls[0] = false;
+                b.walls[2] = false;
+            } else if (y === -1) {
+                a.walls[2] = false;
+                b.walls[0] = false;
+            }
+        }
+
+        // Game Rendering Loop
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Maze Walls
+            for (let i = 0; i < grid.length; i++) {
+                grid[i].show();
+            }
+
+            // Draw Goal (Green square)
+            ctx.fillStyle = "#4caf50";
+            ctx.fillRect(goal.x * size + 4, goal.y * size + 4, size - 8, size - 8);
+
+            // Draw Player (Red circle)
+            ctx.fillStyle = "#ff5722";
+            ctx.beginPath();
+            let cx = player.x * size + size / 2;
+            let cy = player.y * size + size / 2;
+            ctx.arc(cx, cy, size / 3, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+
+        // Movement Logic
+        function movePlayer(dir) {
+            if (gameOver) return;
+
+            let currentCell = grid[index(player.x, player.y)];
+
+            if (dir === 'up' && !currentCell.walls[0]) player.y--;
+            if (dir === 'right' && !currentCell.walls[1]) player.x++;
+            if (dir === 'down' && !currentCell.walls[2]) player.y++;
+            if (dir === 'left' && !currentCell.walls[3]) player.x--;
+
+            draw();
+            checkWin();
+        }
+
+        function checkWin() {
+            if (player.x === goal.x && player.y === goal.y) {
+                victoryMsg.innerText = "You Escaped!";
+                gameOver = true;
+            }
+        }
+
+        // Button Event Listeners
+        document.getElementById('btn-up').addEventListener('click', () => movePlayer('up'));
+        document.getElementById('btn-down').addEventListener('click', () => movePlayer('down'));
+        document.getElementById('btn-left').addEventListener('click', () => movePlayer('left'));
+        document.getElementById('btn-right').addEventListener('click', () => movePlayer('right'));
+
+        // Keyboard support as a bonus
+        window.addEventListener('keydown', e => {
+            if (e.key === 'ArrowUp' || e.key === 'w') movePlayer('up');
+            if (e.key === 'ArrowDown' || e.key === 's') movePlayer('down');
+            if (e.key === 'ArrowLeft' || e.key === 'a') movePlayer('left');
+            if (e.key === 'ArrowRight' || e.key === 'd') movePlayer('right');
+        });
+
+        // Initialize Game
+        setupMaze();
+        draw();
+    </script>
+</body>
+</html>
